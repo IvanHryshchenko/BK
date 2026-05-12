@@ -2,29 +2,38 @@ import pandas as pd
 import numpy as np
 
 def load_data(file_path='K1.xlsx'):
-    df = pd.read_excel(file_path, sheet_name='TOTAL values GCSD', header=2)
+    print("Реальные названия колонок:")
     
-    # Показываем реальные названия колонок (для отладки)
-    print("Реальные названия колонок:", df.columns.tolist())
+    # Пробуем разные варианты чтения
+    df = pd.read_excel(file_path, header=0)
+    print(df.columns.tolist())
     
-    # Очищаем названия колонок от лишних пробелов
-    df.columns = [str(col).strip() for col in df.columns]
+    # Если колонок мало или есть Unnamed — пробуем пропустить строки
+    if len(df.columns) < 4 or any('Unnamed' in str(col) for col in df.columns):
+        df = pd.read_excel(file_path, header=1)  # пробуем вторую строку
     
-    # Ищем нужные колонки (гибкий поиск)
+    real_cols = df.columns.tolist()
+    print("Реальные названия колонок:", real_cols)
+    
+    # Гибкое сопоставление колонок
     col_map = {}
-    for col in df.columns:
-        if 'PART NUMBER' in col.upper():
+    for col in real_cols:
+        col_str = str(col).strip().upper()
+        if 'PART NUMBER' in col_str or 'PART' in col_str:
             col_map['PART NUMBER'] = col
-        elif 'GCSD' in col.upper():
+        elif 'GCSD' in col_str:
             col_map['GCSD'] = col
-        elif 'ADJ' in col.upper():
+        elif 'ADJ' in col_str:
             col_map['ADJ.'] = col
-        elif 'PLANT STANDARD' in col.upper():
+        elif 'PLANT STANDARD' in col_str or 'PLANT' in col_str:
             col_map['PLANT STANDARD'] = col
     
     print("Найденные колонки:", col_map)
     
-    # Берем только нужные
+    if len(col_map) < 4:
+        raise KeyError("Не удалось найти все необходимые колонки!")
+    
+    # Берем только нужные колонки
     df = df[[col_map['PART NUMBER'], 
              col_map['GCSD'], 
              col_map['ADJ.'], 
@@ -33,17 +42,9 @@ def load_data(file_path='K1.xlsx'):
     # Переименовываем для удобства
     df.columns = ['PART NUMBER', 'GCSD', 'ADJ.', 'PLANT STANDARD']
     
-    # Приводим к числам
-    for col in ['GCSD', 'ADJ.', 'PLANT STANDARD']:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
+    # Очистка
+    df = df[df['GCSD'] > 0.1]
+    df = df[~df['PART NUMBER'].astype(str).str.contains('TOTAL|SUMMARY', na=False, case=False)]
     
-    # Тип операции
-    df['Operation_Type'] = df['PART NUMBER'].astype(str).apply(lambda x: 
-        'CUTTING' if 'CUT' in x.upper() else 
-        'LEAD' if any(w in x.upper() for w in ['LEAD','PREP','R2']) else 
-        'ASSEMBLY' if 'ASSEMBLY' in x.upper() or 'FINAL' in x.upper() else 'OTHER')
-    
-    df = df.dropna(subset=['GCSD', 'PLANT STANDARD']).reset_index(drop=True)
-    
-    print(f"✅ Успешно загружено {len(df)} строк для обучения")
+    print(f"✅ Успешно загружено {len(df)} строк для работы")
     return df

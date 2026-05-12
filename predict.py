@@ -1,59 +1,40 @@
-from data_preparation import load_data
-import torch
-import torch.nn as nn
-import pickle
 import pandas as pd
 
-# ====================== ЗАГРУЗКА МОДЕЛИ ======================
-class SimpleNet(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.model = nn.Sequential(
-            nn.Linear(3, 128),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 1)
-        )
-    def forward(self, x):
-        return self.model(x)
+# Коэффициенты из линейной регрессии (train.py)
+w1 = 1.2875177919128709   # для GCSD
+w2 = 17.39800771745418    # для ADJ.
+b = -21.83017563915144
 
-model = SimpleNet()
-model.load_state_dict(torch.load('harness_model.pth'))
-model.eval()
+print("Загружаем K1_large.xlsx...")
 
-with open('scaler.pkl', 'rb') as f:
-    scaler = pickle.load(f)
-with open('label_encoder.pkl', 'rb') as f:
-    le = pickle.load(f)
+# Загружаем файл
+df = pd.read_excel("K1_large.xlsx")
 
-print("Модель загружена!\n")
+print(f"Загружено строк: {len(df)}")
+print("Колонки:", df.columns.tolist())
 
-# ====================== ПРЕДСКАЗАНИЕ ======================
-df = load_data('K1.xlsx')
+# Очистка и выбор колонок
+df = df[['PART NUMBER', 'GCSD', 'ADJ.', 'PLANT STANDARD']].copy()
 
-# Фильтруем только нормальные строки (убираем TOTAL и пустые)
-df = df[~df['PART NUMBER'].astype(str).str.contains('TOTAL', na=False)]
-df = df[df['GCSD'] > 0]
+# Убираем строки TOTAL и пустые
+df = df[df['GCSD'] > 0.1].copy()
+df = df[~df['PART NUMBER'].astype(str).str.contains('TOTAL|SUMMARY', na=False)]
 
-df['Operation_encoded'] = le.transform(df['Operation_Type'])
-X = df[['GCSD', 'ADJ.', 'Operation_encoded']].values
-X_scaled = scaler.transform(X)
+print(f"Строк после очистки: {len(df)}")
 
-X_tensor = torch.FloatTensor(X_scaled)
+# Предсказание
+df['PLANT_STANDARD_AI'] = w1 * df['GCSD'] + w2 * df['ADJ.'] + b
 
-with torch.no_grad():
-    predictions = model(X_tensor).numpy().flatten()
+# Разница
+df['Разница'] = df['PLANT STANDARD'] - df['PLANT_STANDARD_AI']
+df['Абсолютная_ошибка'] = abs(df['Разница'])
 
-df['PLANT_STANDARD_AI'] = predictions.round(4)
-df['Разница'] = (df['PLANT STANDARD'] - df['PLANT_STANDARD_AI']).round(3)
-df['Абсолютная_ошибка'] = df['Разница'].abs()
+# Результаты
+print("\nПервые 10 строк результата:")
+print(df[['PART NUMBER', 'GCSD', 'ADJ.', 'PLANT STANDARD', 'PLANT_STANDARD_AI', 'Разница']].round(4).head(10))
+
+print(f"\nСредняя абсолютная ошибка: ±{df['Абсолютная_ошибка'].mean():.3f} минут")
 
 # Сохраняем
-df.to_excel('RESULT_WITH_AI.xlsx', index=False)
-
-print(f"✅ Готово! Обработано строк: {len(df)}")
-print("\nРезультат:")
-print(df[['PART NUMBER', 'GCSD', 'ADJ.', 'PLANT STANDARD', 'PLANT_STANDARD_AI', 'Разница']].round(3))
-print(f"\nСредняя ошибка: ±{df['Абсолютная_ошибка'].mean():.3f} минут")
+df.to_excel("RESULT_WITH_AI.xlsx", index=False)
+print("\n✅ Результат успешно сохранён в файл: RESULT_WITH_AI.xlsx")
