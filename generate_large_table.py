@@ -2,9 +2,9 @@ import pandas as pd
 import numpy as np
 import random
 
-# =============================================
-# Генерация большой таблицы точно как у тебя
-# =============================================
+# =========================================================
+# Большой качественный датасет для обучения нейросети
+# =========================================================
 
 np.random.seed(42)
 random.seed(42)
@@ -19,40 +19,115 @@ operations = [
     "FINAL ASSEMBLY PACKING"
 ]
 
+# Количество строк
+ROWS = 120000
+
 data = []
 
-for i in range(1520):  # ~1500 строк + оригинальные
+for i in range(ROWS):
+
     op = random.choice(operations)
-    
+
+    # =====================================================
+    # Реалистичные диапазоны GCSD
+    # =====================================================
+
     if op == "CUTTING":
-        gcsd = round(random.uniform(2.5, 5.5), 4)
+        gcsd = np.random.normal(4.0, 0.7)
+
     elif op == "TUBE CUTTING":
-        gcsd = round(random.uniform(0.8, 2.2), 4)
-    elif "LEAD" in op:
-        gcsd = round(random.uniform(15, 28), 4)
+        gcsd = np.random.normal(1.5, 0.35)
+
+    elif op == "EU- LEAD - PREP":
+        gcsd = np.random.normal(24.0, 3.5)
+
+    elif op == "LEAD - PREP":
+        gcsd = np.random.normal(20.0, 2.8)
+
     elif op == "FINAL ASSEMBLY":
-        gcsd = round(random.uniform(45, 72), 4)
+        gcsd = np.random.normal(58.0, 6.0)
+
     elif op == "FA TEST":
-        gcsd = round(random.uniform(5.5, 9.5), 4)
+        gcsd = np.random.normal(7.5, 1.0)
+
+    elif op == "FINAL ASSEMBLY PACKING":
+        gcsd = np.random.normal(3.2, 0.5)
+
+    # Защита от отрицательных значений
+    gcsd = max(0.5, round(gcsd, 4))
+
+    # =====================================================
+    # ADJ зависит от операции
+    # =====================================================
+
+    if "ASSEMBLY" in op:
+        adj = np.random.normal(1.28, 0.07)
+
+    elif "TEST" in op:
+        adj = np.random.normal(1.18, 0.05)
+
+    elif "LEAD" in op:
+        adj = np.random.normal(1.33, 0.06)
+
     else:
-        gcsd = round(random.uniform(2.0, 4.5), 4)
-    
-    adj = round(random.uniform(1.05, 1.45), 3)
-    plant_standard = round(gcsd * adj * random.uniform(0.96, 1.09), 4)
-    
-    part_number = op if i % 8 == 0 else f"{op} {i}"
-    
+        adj = np.random.normal(1.12, 0.04)
+
+    adj = round(min(max(adj, 1.05), 1.45), 3)
+
+    # =====================================================
+    # Реалистичный шум
+    # =====================================================
+
+    # Основная формула
+    base = gcsd * adj
+
+    # Шум зависит от размера операции
+    noise_percent = np.random.normal(1.0, 0.035)
+
+    # Редкие аномалии (2%)
+    if random.random() < 0.02:
+        noise_percent *= random.uniform(0.88, 1.15)
+
+    plant_standard = round(base * noise_percent, 4)
+
+    # =====================================================
+    # PART NUMBER
+    # =====================================================
+
+    prefixes = [
+        "A", "B", "C", "D",
+        "EU", "US", "JP",
+        "X", "Z"
+    ]
+
+    suffix = random.randint(1000, 999999)
+
+    if i % 9 == 0:
+        part_number = op
+    else:
+        part_number = f"{random.choice(prefixes)}-{op}-{suffix}"
+
+    # =====================================================
+    # Добавление строки
+    # =====================================================
+
     data.append({
         'PART NUMBER': part_number,
-        'GCSD': gcsd,
-        'ADJ.': adj,
+        'GCSD': round(gcsd, 4),
+        'ADJ.': round(adj, 3),
         'PLANT STANDARD': plant_standard
     })
 
-# Создаём DataFrame
+# =========================================================
+# DataFrame
+# =========================================================
+
 df = pd.DataFrame(data)
 
-# Добавляем строку TOTAL в конце (как у тебя)
+# Перемешивание строк
+df = df.sample(frac=1).reset_index(drop=True)
+
+# TOTAL строка
 total_row = pd.DataFrame([{
     'PART NUMBER': 'TOTAL',
     'GCSD': round(df['GCSD'].sum(), 4),
@@ -62,10 +137,17 @@ total_row = pd.DataFrame([{
 
 df = pd.concat([df, total_row], ignore_index=True)
 
-# Сохраняем
-df.to_excel('K1_large.xlsx', index=False)
+# =========================================================
+# Сохранение
+# =========================================================
 
-print("✅ Файл успешно создан!")
-print(f"Количество строк: {len(df)}")
-print("Файл сохранён как: K1_large.xlsx")
-print("\nТеперь просто переименуй его в K1.xlsx и запускай train.py")
+OUTPUT_FILE = 'K1_massive.xlsx'
+
+df.to_excel(OUTPUT_FILE, index=False)
+
+print("======================================")
+print("✅ Огромный датасет успешно создан")
+print("======================================")
+print(f"Строк: {len(df)}")
+print(f"Файл: {OUTPUT_FILE}")
+print("======================================")
